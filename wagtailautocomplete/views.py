@@ -2,6 +2,7 @@ from urllib.parse import unquote
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
 from django.http import (HttpResponseBadRequest, HttpResponseForbidden,
                          JsonResponse)
 from django.views.decorators.http import require_GET, require_POST
@@ -61,10 +62,19 @@ def search(request):
     except ValueError:
         return HttpResponseBadRequest()
 
-    field_name = getattr(model, 'autocomplete_search_field', 'title')
-    filter_kwargs = dict()
-    filter_kwargs[field_name + '__icontains'] = search_query
-    queryset = model.objects.filter(**filter_kwargs)
+    if hasattr(model, 'autocomplete_search_fields'):
+        fields = getattr(model, 'autocomplete_search_fields')
+        q_objects = Q()
+        for word in search_query.split(" "):
+            for field_name in fields:
+                q_objects |= Q(**{"%s__icontains" % field_name: word})
+                print(field_name, word)
+        queryset = model.objects.filter(q_objects)
+    else:
+        field_name = getattr(model, 'autocomplete_search_field', 'title')
+        filter_kwargs = dict()
+        filter_kwargs[field_name + '__icontains'] = search_query
+        queryset = model.objects.filter(**filter_kwargs)
 
     if getattr(queryset, 'live', None):
         # Non-Page models like Snippets won't have a live/published status
